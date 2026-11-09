@@ -21,6 +21,7 @@ button{padding:10px 16px;border:0;border-radius:8px;background:var(--acc);color:
 button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 button:disabled{opacity:.5;cursor:default}
 .chk{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:.95rem;cursor:pointer}
+details.set{margin-top:28px;color:var(--mute);font-size:.9rem}
 .auin{flex:0 1 200px;min-width:150px}
 .dd{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;list-style:none;margin:0;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:380px;overflow:auto}
 .dd li{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
@@ -59,6 +60,7 @@ button:disabled{opacity:.5;cursor:default}
 <input type="text" id="au" class="auin" placeholder="Autore (facoltativo)" autocomplete="off">
 <button id="add">Aggiungi</button>
 </div>
+<p id="srcnote" class="hint" hidden></p>
 <p class="hint">Scegli un suggerimento per un inserimento preciso: l’autore è facoltativo, ma aiuta a trovare il libro giusto. Stelle: clicca per votare, clicca di nuovo la stessa per togliere il voto.</p>
 <ul id="list" class="books"></ul>
 <div class="row">
@@ -68,6 +70,11 @@ button:disabled{opacity:.5;cursor:default}
 </div>
 <div id="msg" class="msg"></div>
 <div id="out" class="cards"></div>
+<details class="set">
+<summary>Impostazioni (facoltative)</summary>
+<p class="hint">Chiave API di Google Books: serve se i suggerimenti non funzionano per il limite di richieste. Resta salvata solo in questo browser.</p>
+<div class="row"><input type="text" id="key" placeholder="Chiave API (inizia con AIza…)" autocomplete="off"><button id="savekey" class="ghost">Salva</button><button id="delkey" class="ghost">Rimuovi</button></div>
+</details>
 </main>
 <script>
 var $=function(i){return document.getElementById(i)};
@@ -106,8 +113,11 @@ function render(){
 
 /* ---------- Google Books: ricerca e autocompletamento ---------- */
 var GB='https://www.googleapis.com/books/v1/volumes';
+function gbKey(){try{return localStorage.getItem('gbkey')||''}catch(e){return ''}}
+var gbDown=false;
+function note(t){var n=$('srcnote');n.textContent=t||'';n.hidden=!t}
 function gbSearch(q,n,extra){
- return fetch(GB+'?q='+encodeURIComponent(q)+'&printType=books&maxResults='+n+(extra||'')+
+ return fetch(GB+'?q='+encodeURIComponent(q)+'&printType=books&maxResults='+n+(extra||'')+(gbKey()?'&key='+encodeURIComponent(gbKey()):'')+
   '&fields=items(id,volumeInfo(title,authors,categories,language,industryIdentifiers,imageLinks/smallThumbnail))')
   .then(function(r){if(!r.ok)throw {code:'http',status:r.status};return r.json()})
   .then(function(d){return (d.items||[]).map(function(i){return i.volumeInfo})});
@@ -120,6 +130,35 @@ function toBook(v){
  (v.categories||[]).forEach(function(c){String(c).split('/').forEach(function(p){p=p.trim();if(p)cats.push(p)})});
  var th=v.imageLinks&&v.imageLinks.smallThumbnail;
  return {t:v.title,a:(v.authors||[]).slice(0,2).join(', '),isbn:isbn,cats:cats,r:0,lang:v.language||'',thumb:th?th.replace('http:','https:'):''};
+}
+
+/* Open Library come alternativa quando Google Books non è disponibile (nessuna chiave richiesta) */
+function olBooks(q,au,n,ita){
+ var qq=clean(q)+(au?' author:"'+clean(au)+'"':'')+(ita?' language:ita':'');
+ return getJSON(OL+'?q='+encodeURIComponent(qq)+'&limit='+n+'&fields=key,title,author_name,subject,isbn,cover_i')
+  .then(function(d){return (d.docs||[]).map(function(x){
+   if(!x.title)return null;
+   return {t:x.title,a:(x.author_name||[]).slice(0,2).join(', '),isbn:(x.isbn&&x.isbn[0])||'',cats:(x.subject||[]).slice(0,30),r:0,lang:'',
+    thumb:x.cover_i?'https://covers.openlibrary.org/b/id/'+x.cover_i+'-S.jpg':''};
+  }).filter(Boolean)});
+}
+async function searchAny(q,au,n,ita){
+ if(!gbDown){
+  try{
+   var vs=await gbSearch(q+(au?' inauthor:"'+clean(au)+'"':''),n,ita?'&langRestrict=it':'');
+   var b=vs.map(toBook).filter(Boolean);
+   if(ita)b=b.filter(function(x){return x.lang==='it'});
+   return {books:b,src:'gb'};
+  }catch(e){
+   if(e&&(e.status===429||e.status===403)){
+    gbDown=true;
+    note(gbKey()
+     ?'Google Books non accetta la chiave inserita o ha raggiunto il limite: uso Open Library (meno copertine e meno titoli italiani).'
+     :'Google Books ha raggiunto il limite di richieste: uso Open Library (meno copertine e meno titoli italiani). Per risultati migliori inserisci una chiave gratuita in “Impostazioni”.');
+   }
+  }
+ }
+ return {books:await olBooks(q,au,n,ita),src:'ol'};
 }
 var sugg=[],active=-1,seq=0,timer;
 function closeDD(){$('dd').hidden=true;$('t').setAttribute('aria-expanded','false');active=-1}
@@ -148,13 +187,10 @@ function setActive(i){
 async function suggest(q,au){
  var my=++seq;
  try{
-  var query=q+(au?' inauthor:"'+clean(au)+'"':'');
-  var ita=$('ita').checked;
-  var vs=await gbSearch(query,12,ita?'&langRestrict=it':'');
+  var r=await searchAny(q,au,12,$('ita').checked);
   if(my!==seq)return;
+  var all=r.books;
   var qt=normT(q).split(' ').filter(function(w){return w.length>2});
-  var all=vs.map(toBook).filter(Boolean);
-  if(ita)all=all.filter(function(x){return x.lang==='it'});
   function sc(x){var t=' '+normT(x.t)+' ';return qt.filter(function(w){return t.indexOf(' '+w)>-1}).length}
   /* il risultato che somiglia di più a quanto scritto decide la lingua: le traduzioni in altre lingue vengono scartate */
   var best=null;
@@ -166,7 +202,7 @@ async function suggest(q,au){
    var k=normT(x.t)+'|'+normT(x.a);if(seen[k])return false;seen[k]=1;return true;
   }).slice(0,6);
   showDD();
- }catch(e){if(my===seq)closeDD()}
+ }catch(e){if(my===seq){closeDD();note('Non riesco a cercare i libri in questo momento. Riprova tra poco.')}}
 }
 function pick(i){
  var b=sugg[i];if(!b)return;
@@ -184,10 +220,9 @@ function addFree(){
 async function enrich(b){
  var nt=normT(b.t);if(!nt)return;
  try{
-  var q=b.t+(b.a?' inauthor:"'+clean(b.a)+'"':'');
-  var vs=await gbSearch(q,3);
-  for(var i=0;i<vs.length;i++){
-   var x=toBook(vs[i]);if(!x)continue;
+  var r=await searchAny(b.t,b.a,3,false);
+  for(var i=0;i<r.books.length;i++){
+   var x=r.books[i];
    var xt=normT(x.t);
    if(xt&&(xt.indexOf(nt)>-1||nt.indexOf(xt)>-1)){
     if(!b.a)b.a=x.a;
@@ -279,9 +314,15 @@ async function recommend(){
  var topAuth=Object.keys(authors).sort(function(a,b){return authors[b]-authors[a]}).slice(0,2);
  if(!topSubj.length&&!topAuth.length)return {err:'Servono più libri valutati con 4 o 5 stelle per capire i tuoi gusti.'};
 
- if($('ita').checked)return italianRecs(profile,topSubj,topAuth,readNorm,readIsbn);
- var lists=await Promise.all(topSubj.map(function(s){return find('subject:"'+s+'"')})
-  .concat(topAuth.map(function(a){return find('author:"'+clean(a)+'"')})));
+ var sfx='';
+ if($('ita').checked){
+  var ir=gbDown?null:await italianRecs(profile,topSubj,topAuth,readNorm,readIsbn);
+  if(ir)return ir;
+  note('Modalità “Solo libri in italiano”: Google Books non risponde, uso Open Library. I titoli possono essere in originale.');
+  sfx=' language:ita';
+ }
+ var lists=await Promise.all(topSubj.map(function(s){return find('subject:"'+s+'"'+sfx)})
+  .concat(topAuth.map(function(a){return find('author:"'+clean(a)+'"'+sfx)})));
 
  var cand={};
  lists.forEach(function(ds,qi){
@@ -314,9 +355,11 @@ async function recommend(){
 async function italianRecs(profile,topSubj,topAuth,readNorm,readIsbn){
  var qs=topSubj.map(function(s){return {q:'subject:"'+clean(s)+'"',subj:s}})
   .concat(topAuth.map(function(a){return {q:'inauthor:"'+clean(a)+'"',auth:a}}));
+ var failed=0;
  var lists=await Promise.all(qs.map(function(x){
-  return gbSearch(x.q,40,'&langRestrict=it').catch(function(){return []});
+  return gbSearch(x.q,40,'&langRestrict=it').catch(function(e){failed++;if(e&&(e.status===429||e.status===403))gbDown=true;return []});
  }));
+ if(failed===qs.length)return null;
  var cand={};
  lists.forEach(function(vs,qi){
   var x=qs[qi];
@@ -372,6 +415,9 @@ $('go').onclick=async function(){
 };
 try{$('ita').checked=localStorage.getItem('onlyIt')==='1'}catch(e){}
 $('ita').addEventListener('change',function(){try{localStorage.setItem('onlyIt',this.checked?'1':'0')}catch(e){}onType()});
+$('key').value=gbKey();
+$('savekey').onclick=function(){try{localStorage.setItem('gbkey',$('key').value.trim())}catch(e){}gbDown=false;note('Chiave salvata: prova a cercare un libro.')};
+$('delkey').onclick=function(){try{localStorage.removeItem('gbkey')}catch(e){}$('key').value='';gbDown=false;note('Chiave rimossa.')};
 render();
 inBatches(books.filter(function(b){return !b.a}).slice(0,10),3,enrich);
 </script>
