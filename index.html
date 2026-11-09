@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prossima lettura</title>
+<style>
+:root{--bg:#e2c99d;--card:#fbf5e8;--ink:#3a2a1a;--mute:#5e4630;--line:#cdb58a;--acc:#8a4b24;--accink:#fff;--star:#c88a14;--hov:#f0e4cc;
+--wood:repeating-linear-gradient(90deg,rgba(120,80,40,.05) 0 2px,transparent 2px 7px),repeating-linear-gradient(0deg,rgba(255,255,255,.07) 0 1px,transparent 1px 90px),linear-gradient(#e9d3ac,#dcc196)}
+@media (prefers-color-scheme:dark){:root{--bg:#2b2018;--card:#3a2d22;--ink:#f1e8da;--mute:#c2b19b;--line:#54432f;--acc:#e0885f;--accink:#1c1814;--star:#f0b43c;--hov:#4a3a2b;
+--wood:repeating-linear-gradient(90deg,rgba(0,0,0,.18) 0 2px,transparent 2px 7px),repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 90px),linear-gradient(#2f2319,#241a12)}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);background-image:var(--wood);color:var(--ink);font:16px/1.5 Georgia,'Times New Roman',serif}
+main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:2rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 24px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sbox{position:relative;flex:1;min-width:220px}
+input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+button{padding:10px 16px;border:0;border-radius:8px;background:var(--acc);color:var(--accink);font:inherit;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+.chk{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:.95rem;cursor:pointer}
+.auin{flex:0 1 200px;min-width:150px}
+.dd{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;list-style:none;margin:0;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:380px;overflow:auto}
+.dd li{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
+.dd li.act,.dd li:hover{background:var(--hov)}
+.dd img,.dd .ph{width:32px;height:46px;object-fit:cover;border-radius:3px;background:var(--line);flex:none}
+.dd .tt{font-weight:bold;line-height:1.2}
+.dd .aa{color:var(--mute);font-size:.85rem}
+.book,.card{box-shadow:0 1px 3px rgba(60,35,10,.2)}
+.books{list-style:none;padding:0;margin:16px 0;display:grid;gap:8px}
+.book{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 8px 8px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.book .name{flex:1;min-width:140px}
+.book .name b{display:block;line-height:1.25}
+.book .name small{display:block;color:var(--mute);font-size:.92rem;font-style:italic}
+.stars{display:inline-flex}
+.stars button{padding:0 2px;background:none;color:var(--line);font-size:1.5rem;line-height:1}
+.stars button.on{color:var(--star)}
+.rm{background:none;color:var(--mute);padding:0 8px;font-size:1.2rem}
+.cards{display:grid;gap:12px;margin-top:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h3{margin:0}
+.card .au{color:var(--mute);font-style:italic;margin-bottom:8px}
+.card a{display:inline-block;margin-top:8px;color:var(--acc);font-weight:bold}
+.msg{color:var(--mute);margin-top:16px}
+.hint{font-size:.85rem;color:var(--mute);margin:6px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Prossima lettura</h1>
+<p class="sub">Cerca i libri che hai letto, scegli quello giusto dai suggerimenti e valutalo da 1 a 5 stelle (5 = il massimo). I consigli sono calcolati dai temi dei tuoi libri preferiti, senza intelligenza artificiale.</p>
+<div class="row">
+<div class="sbox">
+<input type="text" id="t" placeholder="Inizia a scrivere un titolo…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="dd">
+<ul id="dd" class="dd" role="listbox" hidden></ul>
+</div>
+<input type="text" id="au" class="auin" placeholder="Autore (facoltativo)" autocomplete="off">
+<button id="add">Aggiungi</button>
+</div>
+<p class="hint">Scegli un suggerimento per un inserimento preciso: l’autore è facoltativo, ma aiuta a trovare il libro giusto. Stelle: clicca per votare, clicca di nuovo la stessa per togliere il voto.</p>
+<ul id="list" class="books"></ul>
+<div class="row">
+<button id="go" disabled>Consigliami</button>
+<button id="clr" class="ghost">Svuota</button>
+<label class="chk"><input type="checkbox" id="ita"> Solo libri in italiano</label>
+</div>
+<div id="msg" class="msg"></div>
+<div id="out" class="cards"></div>
+</main>
+<script>
+var $=function(i){return document.getElementById(i)};
+var books=[];
+try{
+ books=JSON.parse(localStorage.getItem('books3')||localStorage.getItem('books2')||localStorage.getItem('books')||'[]').map(function(b){
+  return typeof b==='string'?{t:b,a:'',isbn:'',cats:[],r:0}:{t:b.t,a:b.a||'',isbn:b.isbn||'',cats:b.cats||[],r:b.r||0};
+ });
+}catch(e){}
+function save(){try{localStorage.setItem('books3',JSON.stringify(books))}catch(e){}}
+function clean(s){return String(s||'').replace(/["]/g,' ').replace(/\s+/g,' ').trim()}
+
+/* ---------- Elenco libri con stelle ---------- */
+function render(){
+ var l=$('list');l.innerHTML='';
+ books.forEach(function(b,i){
+  var li=document.createElement('li');li.className='book';
+  var n=document.createElement('span');n.className='name';
+  var tb=document.createElement('b');tb.textContent=b.t;n.appendChild(tb);
+  var sm=document.createElement('small');sm.textContent=b.a||'Autore non indicato';n.appendChild(sm);
+  var st=document.createElement('span');st.className='stars';
+  for(var s=1;s<=5;s++)(function(s){
+   var x=document.createElement('button');
+   x.textContent='★';x.title=s+' su 5';
+   x.setAttribute('aria-label',s+' stelle su 5');
+   if(s<=b.r)x.className='on';
+   x.onclick=function(){b.r=(b.r===s)?0:s;save();render()};
+   st.appendChild(x);
+  })(s);
+  var rm=document.createElement('button');rm.className='rm';rm.textContent='×';rm.setAttribute('aria-label','Rimuovi');
+  rm.onclick=function(){books.splice(i,1);save();render()};
+  li.appendChild(n);li.appendChild(st);li.appendChild(rm);l.appendChild(li);
+ });
+ $('go').disabled=books.length<1;
+}
+
+/* ---------- Google Books: ricerca e autocompletamento ---------- */
+var GB='https://www.googleapis.com/books/v1/volumes';
+function gbSearch(q,n,extra){
+ return fetch(GB+'?q='+encodeURIComponent(q)+'&printType=books&maxResults='+n+(extra||'')+
+  '&fields=items(id,volumeInfo(title,authors,categories,language,industryIdentifiers,imageLinks/smallThumbnail))')
+  .then(function(r){if(!r.ok)throw {code:'http',status:r.status};return r.json()})
+  .then(function(d){return (d.items||[]).map(function(i){return i.volumeInfo})});
+}
+function toBook(v){
+ if(!v||!v.title)return null;
+ var isbn='';
+ (v.industryIdentifiers||[]).forEach(function(x){if(x.type==='ISBN_13')isbn=x.identifier;else if(!isbn&&x.type==='ISBN_10')isbn=x.identifier});
+ var cats=[];
+ (v.categories||[]).forEach(function(c){String(c).split('/').forEach(function(p){p=p.trim();if(p)cats.push(p)})});
+ var th=v.imageLinks&&v.imageLinks.smallThumbnail;
+ return {t:v.title,a:(v.authors||[]).slice(0,2).join(', '),isbn:isbn,cats:cats,r:0,lang:v.language||'',thumb:th?th.replace('http:','https:'):''};
+}
+var sugg=[],active=-1,seq=0,timer;
+function closeDD(){$('dd').hidden=true;$('t').setAttribute('aria-expanded','false');active=-1}
+function showDD(){
+ var dd=$('dd');dd.innerHTML='';
+ if(!sugg.length){closeDD();return}
+ sugg.forEach(function(b,i){
+  var li=document.createElement('li');li.setAttribute('role','option');
+  var im=b.thumb?document.createElement('img'):document.createElement('div');
+  if(b.thumb){im.src=b.thumb;im.alt=''}else im.className='ph';
+  var box=document.createElement('div');
+  var tt=document.createElement('div');tt.className='tt';tt.textContent=b.t;
+  var aa=document.createElement('div');aa.className='aa';aa.textContent=b.a||'Autore sconosciuto';
+  box.appendChild(tt);box.appendChild(aa);li.appendChild(im);li.appendChild(box);
+  li.addEventListener('mousedown',function(e){e.preventDefault();pick(i)});
+  dd.appendChild(li);
+ });
+ dd.hidden=false;$('t').setAttribute('aria-expanded','true');active=-1;
+}
+function setActive(i){
+ var items=$('dd').children;if(!items.length)return;
+ active=(i+items.length)%items.length;
+ for(var k=0;k<items.length;k++)items[k].className=k===active?'act':'';
+ items[active].scrollIntoView({block:'nearest'});
+}
+async function suggest(q,au){
+ var my=++seq;
+ try{
+  var query=q+(au?' inauthor:"'+clean(au)+'"':'');
+  var ita=$('ita').checked;
+  var vs=await gbSearch(query,12,ita?'&langRestrict=it':'');
+  if(my!==seq)return;
+  var qt=normT(q).split(' ').filter(function(w){return w.length>2});
+  var all=vs.map(toBook).filter(Boolean);
+  if(ita)all=all.filter(function(x){return x.lang==='it'});
+  function sc(x){var t=' '+normT(x.t)+' ';return qt.filter(function(w){return t.indexOf(' '+w)>-1}).length}
+  /* il risultato che somiglia di più a quanto scritto decide la lingua: le traduzioni in altre lingue vengono scartate */
+  var best=null;
+  all.forEach(function(x){if(!best||sc(x)>sc(best))best=x});
+  var lang=best&&best.lang;
+  var seen={};
+  sugg=all.filter(function(x){
+   if(lang&&x.lang&&x.lang!==lang)return false;
+   var k=normT(x.t)+'|'+normT(x.a);if(seen[k])return false;seen[k]=1;return true;
+  }).slice(0,6);
+  showDD();
+ }catch(e){if(my===seq)closeDD()}
+}
+function pick(i){
+ var b=sugg[i];if(!b)return;
+ delete b.thumb;delete b.lang;books.push(b);
+ $('t').value='';$('au').value='';sugg=[];closeDD();save();render();
+}
+function addFree(){
+ var v=$('t').value.trim();if(!v)return;
+ var nb={t:v,a:$('au').value.trim(),isbn:'',cats:[],r:0};
+ books.push(nb);
+ $('t').value='';$('au').value='';sugg=[];closeDD();save();render();
+ enrich(nb);
+}
+/* Per i titoli scritti a mano: cerca su Google Books e completa autore, ISBN e categorie */
+async function enrich(b){
+ var nt=normT(b.t);if(!nt)return;
+ try{
+  var q=b.t+(b.a?' inauthor:"'+clean(b.a)+'"':'');
+  var vs=await gbSearch(q,3);
+  for(var i=0;i<vs.length;i++){
+   var x=toBook(vs[i]);if(!x)continue;
+   var xt=normT(x.t);
+   if(xt&&(xt.indexOf(nt)>-1||nt.indexOf(xt)>-1)){
+    if(!b.a)b.a=x.a;
+    if(!b.isbn)b.isbn=x.isbn;
+    if(!(b.cats&&b.cats.length))b.cats=x.cats;
+    save();render();return;
+   }
+  }
+ }catch(e){}
+}
+function onType(){
+ clearTimeout(timer);var q=$('t').value.trim();
+ if(q.length<3){seq++;closeDD();return}
+ timer=setTimeout(function(){suggest(q,$('au').value.trim())},300);
+}
+function onKey(e){
+ if(e.key==='ArrowDown'){e.preventDefault();setActive(active+1)}
+ else if(e.key==='ArrowUp'){e.preventDefault();setActive(active-1)}
+ else if(e.key==='Escape'){closeDD()}
+ else if(e.key==='Enter'){e.preventDefault();if(active>=0)pick(active);else if(!$('dd').hidden&&sugg.length)pick(0);else addFree()}
+}
+['t','au'].forEach(function(id){
+ $(id).addEventListener('input',onType);
+ $(id).addEventListener('keydown',onKey);
+ $(id).addEventListener('blur',function(){setTimeout(closeDD,100)});
+});
+$('add').onclick=function(){if(!$('dd').hidden&&sugg.length)pick(active>=0?active:0);else addFree()};
+$('clr').onclick=function(){books=[];save();render();$('out').innerHTML='';$('msg').textContent=''};
+
+/* ---------- Open Library: temi e candidati ---------- */
+var OL='https://openlibrary.org/search.json';
+var STOP=/^(fiction|nonfiction|non-fiction|novel|novels|general|large type books|accessible book|protected daisy|in library|open library|lending library|reading|literature|books and reading|english language|english fiction|american fiction|italian fiction|translations|juvenile literature|juvenile fiction)$/;
+function normSubj(s){
+ s=String(s).toLowerCase().trim();
+ if(s.length>40||/[\d:]/.test(s)||STOP.test(s)||/reading level|nyt|bestseller|new york times|award|large print/.test(s))return null;
+ return s;
+}
+function normT(s){return String(s).toLowerCase().replace(/[^a-z0-9àèéìòù]+/g,' ').trim()}
+function weight(r){return r===5?2:r===4?1:r===3?0:r===2?-1:r===1?-2:0.5}
+function getJSON(url){
+ return fetch(url).then(function(r){if(!r.ok)throw {code:'http',status:r.status};return r.json()});
+}
+/* Esegue le richieste a gruppi (size alla volta) invece che tutte insieme, per non sovraccaricare i servizi */
+async function inBatches(items,size,fn,onProgress){
+ var out=[];
+ for(var i=0;i<items.length;i+=size){
+  var chunk=items.slice(i,i+size);
+  out=out.concat(await Promise.all(chunk.map(fn)));
+  if(onProgress)onProgress(Math.min(i+size,items.length),items.length);
+ }
+ return out;
+}
+function olFirst(q){
+ return getJSON(OL+'?q='+encodeURIComponent(q)+'&limit=1&fields=title,author_name,subject')
+  .then(function(d){return d.docs&&d.docs[0]||null}).catch(function(){return null});
+}
+/* Collega il libro (anche italiano) al record Open Library: prima ISBN, poi titolo+autore, poi solo titolo */
+async function resolve(b){
+ var doc=null;
+ if(b.isbn)doc=await olFirst('isbn:'+b.isbn);
+ if(!doc&&b.a)doc=await olFirst('title:"'+clean(b.t)+'" author:"'+clean(b.a.split(',')[0])+'"');
+ if(!doc)doc=await olFirst(clean(b.t)+' '+clean(b.a.split(',')[0]));
+ return doc;
+}
+function find(q){
+ return getJSON(OL+'?q='+encodeURIComponent(q)+'&sort=readinglog&limit=40&fields=key,title,author_name,subject')
+  .then(function(d){return d.docs||[]}).catch(function(){return []});
+}
+function amazon(b){return 'https://www.amazon.it/s?k='+encodeURIComponent(b.title+' '+b.author)+'&i=stripbooks'}
+
+async function recommend(){
+ var docs=await inBatches(books,5,resolve,function(d,n){$('msg').textContent='Sto analizzando i tuoi libri… ('+d+'/'+n+')'});
+ var profile={},authors={},readNorm=[],readIsbn={},usable=0;
+ books.forEach(function(b,i){
+  var doc=docs[i],w=weight(b.r),seen={};
+  readNorm.push(normT(b.t));if(b.isbn)readIsbn[b.isbn]=1;
+  if(doc&&doc.title)readNorm.push(normT(doc.title));
+  var subs=((doc&&doc.subject)||[]).concat(b.cats||[]);
+  if(subs.length)usable++;
+  subs.forEach(function(s){
+   s=normSubj(s);if(!s||seen[s])return;seen[s]=1;
+   profile[s]=(profile[s]||0)+w;
+  });
+  var au=(doc&&doc.author_name&&doc.author_name[0])||(b.a&&b.a.split(',')[0]);
+  if(w>=1&&au)authors[au]=(authors[au]||0)+w;
+ });
+ if(!usable)return {err:'Non sono riuscito a ricavare i temi dei tuoi libri. Prova a sceglierli dai suggerimenti della barra di ricerca.'};
+ var topSubj=Object.keys(profile).filter(function(s){return profile[s]>0}).sort(function(a,b){return profile[b]-profile[a]}).slice(0,5);
+ var topAuth=Object.keys(authors).sort(function(a,b){return authors[b]-authors[a]}).slice(0,2);
+ if(!topSubj.length&&!topAuth.length)return {err:'Servono più libri valutati con 4 o 5 stelle per capire i tuoi gusti.'};
+
+ if($('ita').checked)return italianRecs(profile,topSubj,topAuth,readNorm,readIsbn);
+ var lists=await Promise.all(topSubj.map(function(s){return find('subject:"'+s+'"')})
+  .concat(topAuth.map(function(a){return find('author:"'+clean(a)+'"')})));
+
+ var cand={};
+ lists.forEach(function(ds,qi){
+  var byAuthor=qi>=topSubj.length;
+  ds.forEach(function(d){
+   if(!d.title||!d.author_name)return;
+   var nt=normT(d.title);
+   if(nt.length>3&&readNorm.some(function(r){return r.length>3&&(r.indexOf(nt)>-1||nt.indexOf(r)>-1)}))return;
+   var c=cand[nt]||(cand[nt]={title:d.title,author:d.author_name[0],subs:{},sameAuthor:false});
+   (d.subject||[]).forEach(function(s){s=normSubj(s);if(s&&profile[s]!==undefined)c.subs[s]=1});
+   if(byAuthor)c.sameAuthor=true;
+  });
+ });
+ var list=Object.keys(cand).map(function(k){
+  var c=cand[k],m=Object.keys(c.subs);
+  c.score=m.reduce(function(a,s){return a+profile[s]},0)+(c.sameAuthor?3:0);
+  c.matches=m.filter(function(s){return profile[s]>0}).sort(function(a,b){return profile[b]-profile[a]});
+  return c;
+ }).filter(function(c){return c.score>0}).sort(function(a,b){return b.score-a.score});
+ var perA={},res=[];
+ list.forEach(function(c){
+  perA[c.author]=(perA[c.author]||0)+1;
+  if(perA[c.author]<=2&&res.length<6)res.push(c);
+ });
+ return {items:res};
+}
+
+/* Modalità "Solo libri in italiano": i gusti vengono ricavati da tutti i libri salvati (in qualsiasi lingua),
+   ma i candidati arrivano da Google Books, solo edizioni italiane, con titolo italiano. */
+async function italianRecs(profile,topSubj,topAuth,readNorm,readIsbn){
+ var qs=topSubj.map(function(s){return {q:'subject:"'+clean(s)+'"',subj:s}})
+  .concat(topAuth.map(function(a){return {q:'inauthor:"'+clean(a)+'"',auth:a}}));
+ var lists=await Promise.all(qs.map(function(x){
+  return gbSearch(x.q,40,'&langRestrict=it').catch(function(){return []});
+ }));
+ var cand={};
+ lists.forEach(function(vs,qi){
+  var x=qs[qi];
+  vs.map(toBook).filter(Boolean).forEach(function(b){
+   if(b.lang!=='it'||!b.a)return;
+   if(b.isbn&&readIsbn[b.isbn])return;
+   var nt=normT(b.t);
+   if(nt.length>3&&readNorm.some(function(r){return r.length>3&&(r.indexOf(nt)>-1||nt.indexOf(r)>-1)}))return;
+   var c=cand[nt]||(cand[nt]={title:b.t,author:b.a.split(',')[0],subs:{},sameAuthor:false});
+   b.cats.forEach(function(k){k=normSubj(k);if(k&&profile[k]!==undefined)c.subs[k]=1});
+   if(x.subj)c.subs[x.subj]=1;
+   if(x.auth&&normT(b.a).indexOf(normT(x.auth))>-1)c.sameAuthor=true;
+  });
+ });
+ var list=Object.keys(cand).map(function(k){
+  var c=cand[k],m=Object.keys(c.subs);
+  c.score=m.reduce(function(a,s){return a+profile[s]},0)+(c.sameAuthor?3:0);
+  c.matches=m.filter(function(s){return profile[s]>0}).sort(function(a,b){return profile[b]-profile[a]});
+  return c;
+ }).filter(function(c){return c.score>0}).sort(function(a,b){return b.score-a.score});
+ var perA={},res=[];
+ list.forEach(function(c){
+  perA[c.author]=(perA[c.author]||0)+1;
+  if(perA[c.author]<=2&&res.length<6)res.push(c);
+ });
+ return {items:res};
+}
+
+$('go').onclick=async function(){
+ var msg=$('msg'),out=$('out');
+ out.innerHTML='';msg.textContent='Sto analizzando i tuoi gusti…';
+ $('go').disabled=true;
+ try{
+  var r=await recommend();
+  if(r.err){msg.textContent=r.err;return}
+  if(!r.items.length){msg.textContent=$('ita').checked?'Nessun risultato in italiano: prova ad aggiungere altri libri o a togliere il filtro.':'Nessun risultato: prova ad aggiungere altri libri.';return}
+  msg.textContent='Ecco i consigli in base ai tuoi voti:';
+  r.items.forEach(function(b){
+   var c=document.createElement('div');c.className='card';
+   var h=document.createElement('h3');h.textContent=b.title;
+   var a=document.createElement('div');a.className='au';a.textContent=b.author;
+   var p=document.createElement('div');
+   var why=[];
+   if(b.sameAuthor)why.push('Dello stesso autore di un libro che ti è piaciuto.');
+   if(b.matches.length)why.push('Temi in comune con i tuoi preferiti: '+b.matches.slice(0,3).join(', ')+'.');
+   p.textContent=why.join(' ');
+   var k=document.createElement('a');k.href=amazon(b);k.target='_blank';k.rel='noopener';k.textContent='Cerca su Amazon →';
+   c.appendChild(h);c.appendChild(a);c.appendChild(p);c.appendChild(k);out.appendChild(c);
+  });
+ }catch(e){
+  msg.textContent='Non riesco a contattare il catalogo. Controlla la connessione e riprova.';
+ }finally{$('go').disabled=books.length<1}
+};
+try{$('ita').checked=localStorage.getItem('onlyIt')==='1'}catch(e){}
+$('ita').addEventListener('change',function(){try{localStorage.setItem('onlyIt',this.checked?'1':'0')}catch(e){}onType()});
+render();
+inBatches(books.filter(function(b){return !b.a}).slice(0,10),3,enrich);
+</script>
+</body>
+</html>
